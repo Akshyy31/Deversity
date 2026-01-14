@@ -6,6 +6,7 @@ from django.utils import timezone
 from datetime import timedelta
 
 from user_app.models import EmailVerificationToken
+from user_app.email import send_verification_email  # ADD THIS
 
 User = get_user_model()
 
@@ -62,21 +63,21 @@ class RegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         password = validated_data.pop("password")
 
-        # 1 Create user
+        # 1️⃣ Create user
         user = User(**validated_data)
         user.set_password(password)
         user.is_active = True
         user.is_email_verified = False
         user.save()
 
-        # 2️ Create email verification token
-        EmailVerificationToken.objects.create(
+        # 2️⃣ Create email verification token
+        token_obj = EmailVerificationToken.objects.create(
             user=user,
             token=get_random_string(48),
             expires_at=timezone.now() + timedelta(minutes=15)
         )
 
-        # 3️ (Later) send SQS message here
-        # DO NOT send email directly
+        # 3️⃣ SEND EMAIL (SMTP)
+        send_verification_email(user.email, token_obj.token)
 
         return user

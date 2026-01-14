@@ -127,12 +127,17 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 
+
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
+EMAIL_HOST_USER="akshayshaji031@gmail.com"
+EMAIL_HOST_PASSWORD="ewzqnoimrsxlcfmy"
+DEFAULT_FROM_EMAIL="Deversity <akshayshaji031@gmail.com>"
+# EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+# EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+# DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL")
 
-EMAIL_HOST_USER = "yourgmail@gmail.com"   # CHANGE THIS
-EMAIL_HOST_PASSWORD = "YOUR_APP_PASSWORD" # CHANGE THIS
-
-DEFAULT_FROM_EMAIL = "DevConnect <yourgmail@gmail.com>"
+# for email verification base url
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:8000")
