@@ -1,0 +1,18 @@
+".env`n.env.*`n__pycache__/`n*.pyc`n*.log" 
+
+
+__pycache__/
+*.pyc
+
+# Virtual environments (all services)
+venv/
+*/venv/
+
+# Environment files (all services)
+.env
+.env.*
+*/.env
+*/.env.*
+
+# Logs
+*.log
