@@ -3,7 +3,7 @@ import uuid
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.utils import timezone
-
+from user_app.managers import UserManager
 
 class User(AbstractBaseUser, PermissionsMixin):
     ROLE_CHOICES = (
@@ -21,9 +21,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_email_verified = models.BooleanField(default=False)
     is_phone_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
-
+    is_staff = models.BooleanField(default=False)
+    
     USERNAME_FIELD = "email"
-    REQUIRED_FIELDS = ["username"]
+    REQUIRED_FIELDS = ["username", "full_name", "phone", "role"]
+
+    objects = UserManager() 
 
     created_at = models.DateTimeField(auto_now_add=True)
 

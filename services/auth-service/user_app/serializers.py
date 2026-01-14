@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from user_app.models import EmailVerificationToken
 from user_app.email import send_verification_email  # ADD THIS
-
+from user_app.tasks import send_verification_email_task
 User = get_user_model()
 
 
@@ -78,6 +78,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         )
 
         # 3️⃣ SEND EMAIL (SMTP)
-        send_verification_email(user.email, token_obj.token)
+        # send_verification_email(user.email, token_obj.token)
+        send_verification_email_task.delay(user.email, token_obj.token)
 
         return user

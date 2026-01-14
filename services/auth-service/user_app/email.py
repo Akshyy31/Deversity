@@ -1,6 +1,6 @@
+# users/email.py
 from django.core.mail import send_mail
 from django.conf import settings
-
 
 def send_verification_email(email: str, token: str):
     verify_link = f"{settings.FRONTEND_BASE_URL}/auth/verify-email/?token={token}"

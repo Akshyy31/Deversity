@@ -141,3 +141,12 @@ DEFAULT_FROM_EMAIL="Deversity <akshayshaji031@gmail.com>"
 
 # for email verification base url
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:8000")
+
+
+
+CELERY_BROKER_URL = "redis://localhost:6379/0"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+
+INSTALLED_APPS += ["django_celery_results"]
+CELERY_RESULT_BACKEND = "django-db"
