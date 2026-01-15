@@ -1,53 +1,141 @@
-from django.shortcuts import render
+import json
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from user_app.serializers import RegisterSerializer
-from user_app.models import EmailVerificationToken
+from django.contrib.auth.hashers import make_password
+from .serializers import RegisterSerializer
+from utils.redis_client import redis_client
+from utils.otp import generate_otp
+from tasks.email_tasks import send_otp_email
+from django.contrib.auth import get_user_model
+import uuid
 
+User = get_user_model()
 
 class RegisterAPIView(APIView):
-    permission_classes = []  # public endpoint
+    """
+    Register user (STEP 6 – UPDATED):
+    - Validate input
+    - Generate OTP + otp_id
+    - Store temp data in Redis using otp_id
+    - Send OTP via Celery
+    - Return otp_id to client
+    """
+
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+
+        data = serializer.validated_data
+        email = data["email"]
+
+        # 🔑 Generate OTP session ID
+        otp_id = str(uuid.uuid4())
+        redis_key = f"otp_reg:{otp_id}"
+
+        otp = generate_otp()
+
+        payload = {
+            "email": email,
+            "otp": otp,
+            "attempts": 0,
+            "full_name": data["full_name"],
+            "username": data["username"],
+            "phone": data["phone"],
+            "password": make_password(data["password"]),
+            "role": data["role"],  # already uppercased
+        }
+
+        # ⏱ Store in Redis (TTL = 5 minutes)
+        redis_client.setex(
+            redis_key,
+            300,  # seconds
+            json.dumps(payload)
+        )
+
+        # 📧 Send OTP asynchronously
+        send_otp_email.delay(email, otp)
 
         return Response(
-            {"message": "Registration successful. Please verify your email."},
-            status=status.HTTP_201_CREATED,
+            {
+                "message": "OTP sent to your email",
+                "otp_id": otp_id
+            },
+            status=status.HTTP_201_CREATED
         )
 
 
-class VerifyEmailAPIView(APIView):
-    permission_classes = []                  # public
-    def get(self, request):
-        token_value = request.query_params.get("token")
-        if not token_value:
+class VerifyOTPAPIView(APIView):
+    """
+    Verify OTP (UPDATED):
+    - Accepts otp_id + otp
+    - Reads temp data from Redis
+    - Enforces attempt limits
+    - Creates user ONLY on success
+    - Deletes Redis key
+    """
+
+    MAX_ATTEMPTS = 5
+
+    def post(self, request):
+        otp_id = request.data.get("otp_id")
+        otp_input = request.data.get("otp")
+
+        if not otp_id or not otp_input:
             return Response(
-                {"error": "Token is required"}, status=status.HTTP_400_BAD_REQUEST
-            )
-        try:
-            token = EmailVerificationToken.objects.select_related("user").get(
-                token=token_value
-            )
-        except EmailVerificationToken.DoesNotExist:
-            return Response(
-                {"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST
-            )
-        if not token.is_valid():
-            return Response(
-                {"error": "Token expired or already used"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"error": "otp_id and otp are required"},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
-        user = token.user
-        user.is_email_verified = True
-        user.save(update_fields=["is_email_verified"])
+        redis_key = f"otp_reg:{otp_id}"
+        data = redis_client.get(redis_key)
 
-        token.is_used = True
-        token.save(update_fields=["is_used"])
+        # ❌ OTP expired or invalid session
+        if not data:
+            return Response(
+                {"error": "OTP expired or invalid"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        payload = json.loads(data)
+
+        # 🚫 Too many attempts
+        if payload.get("attempts", 0) >= self.MAX_ATTEMPTS:
+            redis_client.delete(redis_key)
+            return Response(
+                {"error": "Too many failed attempts"},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
+        # ❌ Wrong OTP
+        if payload["otp"] != otp_input:
+            payload["attempts"] = payload.get("attempts", 0) + 1
+
+            # Preserve remaining TTL
+            ttl = redis_client.ttl(redis_key)
+            redis_client.setex(redis_key, ttl, json.dumps(payload))
+
+            return Response(
+                {"error": "Invalid OTP"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # ✅ OTP CORRECT — CREATE USER
+        user = User.objects.create(
+            email=payload["email"],
+            username=payload["username"],
+            full_name=payload["full_name"],
+            phone=payload["phone"],
+            password=payload["password"],  # already hashed
+            role=payload["role"],
+            is_email_verified=True,
+            is_active=True,
+        )
+
+        # 🧹 Cleanup Redis
+        redis_client.delete(redis_key)
 
         return Response(
-            {"message": "Email verified successfully"}, status=status.HTTP_200_OK
+            {"message": "Registration successful"},
+            status=status.HTTP_201_CREATED
         )

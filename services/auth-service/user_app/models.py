@@ -7,8 +7,8 @@ from user_app.managers import UserManager
 
 class User(AbstractBaseUser, PermissionsMixin):
     ROLE_CHOICES = (
-        ("developer", "Developer"),
-        ("mentor", "Mentor"),
+        ("DEVELOPER", "Developer"),
+        ("MENTOR", "Mentor"),
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -19,20 +19,18 @@ class User(AbstractBaseUser, PermissionsMixin):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
 
     is_email_verified = models.BooleanField(default=False)
-    is_phone_verified = models.BooleanField(default=False)
-    is_active = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=False)   # 🔴 important
     is_staff = models.BooleanField(default=False)
-    
-    USERNAME_FIELD = "email"
-    REQUIRED_FIELDS = ["username", "full_name", "phone", "role"]
-
-    objects = UserManager() 
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["username", "full_name", "phone", "role"]
+
+    objects = UserManager()
+
     def __str__(self):
         return self.email
-    
     
 
 

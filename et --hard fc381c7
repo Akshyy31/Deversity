@@ -1,0 +1,7 @@
+[33m72f048a[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m created developer profile and mentor profile
+[33mfc381c7[m created developer profile and mentor profile
+[33m5c030c2[m created developer profile and mentor profile
+[33m0d08106[m[33m ([m[1;31morigin/main[m[33m)[m Update the registration with background email transfer using celery and redis
+[33m3c36126[m email verification completed
+[33m59b55bd[m Complete the registartion models and SMTP email verification
+[33m6a1f43c[m first commit

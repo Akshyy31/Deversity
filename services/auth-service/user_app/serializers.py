@@ -1,84 +1,79 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.core.validators import RegexValidator
-from django.utils.crypto import get_random_string
-from django.utils import timezone
-from datetime import timedelta
+import re
 
-from user_app.models import EmailVerificationToken
-from user_app.email import send_verification_email  # ADD THIS
-from user_app.tasks import send_verification_email_task
+
+
+
 User = get_user_model()
 
 
-class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=10)
+class RegisterSerializer(serializers.Serializer):
+    full_name = serializers.CharField(max_length=120)
+    username = serializers.CharField(max_length=50)
+    email = serializers.EmailField()
+    phone = serializers.CharField(max_length=15)
+    password = serializers.CharField(write_only=True, min_length=8)
+    role = serializers.ChoiceField(choices=["developer", "mentor"])
 
-    phone = serializers.CharField(
-        validators=[
-            RegexValidator(
-                regex=r"^\+?[1-9]\d{9,14}$",
-                message="Invalid phone number format"
-            )
-        ]
-    )
-
-    class Meta:
-        model = User
-        fields = (
-            "full_name",
-            "username",
-            "email",
-            "phone",
-            "password",
-            "role",
-        )
-
-    # ---- FIELD VALIDATIONS ----
-
-    def validate_email(self, value):
-        email = value.lower().strip()
-        if User.objects.filter(email=email).exists():
-            raise serializers.ValidationError("Email already registered")
-        return email
+    # ---------- FIELD LEVEL VALIDATIONS ----------
 
     def validate_username(self, value):
-        username = value.lower().strip()
-        if User.objects.filter(username=username).exists():
-            raise serializers.ValidationError("Username already taken")
-        return username
+        if not re.match(r"^[a-zA-Z0-9_]+$", value):
+            raise serializers.ValidationError(
+                "Username can contain only letters, numbers, and underscores"
+            )
+
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Username already exists")
+
+        return value
+
+    def validate_email(self, value):
+        value = value.lower()
+
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email already registered")
+
+        return value
 
     def validate_phone(self, value):
+        if not re.match(r"^[6-9]\d{9}$", value):
+            raise serializers.ValidationError("Invalid Indian phone number")
+
         if User.objects.filter(phone=value).exists():
             raise serializers.ValidationError("Phone number already registered")
+
+        return value
+
+    def validate_password(self, value):
+        if not re.search(r"[A-Z]", value):
+            raise serializers.ValidationError(
+                "Password must contain an uppercase letter"
+            )
+        if not re.search(r"[a-z]", value):
+            raise serializers.ValidationError(
+                "Password must contain a lowercase letter"
+            )
+        if not re.search(r"[0-9]", value):
+            raise serializers.ValidationError("Password must contain a digit")
+        if not re.search(r"[!@#$%^&*()_+=\-{}[\]:;\"'<>,.?/]", value):
+            raise serializers.ValidationError(
+                "Password must contain a special character"
+            )
+
         return value
 
     def validate_role(self, value):
-        if value not in ["developer", "mentor"]:
-            raise serializers.ValidationError("Invalid role")
-        return value
+        return value.upper()
 
-    # ---- CREATE USER + EMAIL TOKEN ----
+    # ---------- OBJECT LEVEL VALIDATION ----------
 
-    def create(self, validated_data):
-        password = validated_data.pop("password")
+    def validate(self, attrs):
+        if attrs["username"] == attrs["password"]:
+            raise serializers.ValidationError(
+                "Username and password cannot be the same"
+            )
 
-        # 1️⃣ Create user
-        user = User(**validated_data)
-        user.set_password(password)
-        user.is_active = True
-        user.is_email_verified = False
-        user.save()
-
-        # 2️⃣ Create email verification token
-        token_obj = EmailVerificationToken.objects.create(
-            user=user,
-            token=get_random_string(48),
-            expires_at=timezone.now() + timedelta(minutes=15)
-        )
-
-        # 3️⃣ SEND EMAIL (SMTP)
-        # send_verification_email(user.email, token_obj.token)
-        send_verification_email_task.delay(user.email, token_obj.token)
-
-        return user
+        return attrs
