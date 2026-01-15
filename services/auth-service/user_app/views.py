@@ -139,3 +139,71 @@ class VerifyOTPAPIView(APIView):
             {"message": "Registration successful"},
             status=status.HTTP_201_CREATED
         )
+
+
+class ResendOTPAPIView(APIView):
+    """
+    Resend OTP (otp_id-based)
+    - Enforces cooldown
+    - Regenerates OTP
+    - Updates Redis payload
+    """
+
+    COOLDOWN_SECONDS = 60
+    OTP_TTL_SECONDS = 300  # 5 minutes
+
+    def post(self, request):
+        otp_id = request.data.get("otp_id")
+
+        if not otp_id:
+            return Response(
+                {"error": "otp_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        redis_key = f"otp_reg:{otp_id}"
+        cooldown_key = f"otp_resend:{otp_id}"
+
+        # ❌ No active OTP session
+        data = redis_client.get(redis_key)
+        if not data:
+            return Response(
+                {"error": "OTP session expired"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # ⏳ Cooldown check
+        if redis_client.exists(cooldown_key):
+            return Response(
+                {"error": "Please wait before requesting a new OTP"},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
+        payload = json.loads(data)
+
+        # 🔄 Generate new OTP
+        new_otp = generate_otp()
+        payload["otp"] = new_otp
+        payload["attempts"] = 0
+
+        # 🔁 Reset OTP TTL
+        redis_client.setex(
+            redis_key,
+            self.OTP_TTL_SECONDS,
+            json.dumps(payload)
+        )
+
+        # 🧊 Set cooldown
+        redis_client.setex(
+            cooldown_key,
+            self.COOLDOWN_SECONDS,
+            "1"
+        )
+
+        # 📧 Send OTP
+        send_otp_email.delay(payload["email"], new_otp)
+
+        return Response(
+            {"message": "OTP resent successfully"},
+            status=status.HTTP_200_OK
+        )
